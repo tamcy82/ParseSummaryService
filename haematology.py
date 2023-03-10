@@ -23,15 +23,22 @@ def match_blood_film_examination(item, description):
     # Check if string 'blast' in description, case-insensitive with index
     for i in range(len(description)):
         if 'blast' in description[i].lower():
-            additional_notes.append("Blasts")
-            continue
+            # Add to additional note if not exists
+            if "Blasts" not in additional_notes:
+                additional_notes.append("Blasts")
+                continue
         if 'morphology' in description[i].lower():
-            additional_notes.append("General morphology")
-            continue
+            # Add to additional note if not exists
+            if "Morphology" not in additional_notes:
+                additional_notes.append("General Morphology")
+                continue
         if 'nucleated' in description[i].lower():
-            additional_notes.append("Nucleated RBC")
-            continue
+            # Add to additional note if not exists
+            if "Nucleated" not in additional_notes:
+                additional_notes.append("Nucleated RBC")
+                continue
     if len(additional_notes) > 0:
+        additional_notes.sort()
         matched_tests[0] += " (include"
         # Loop through additional notes with index
         for i in range(len(additional_notes)):
@@ -42,7 +49,7 @@ def match_blood_film_examination(item, description):
             # else add comma
             elif i < len(additional_notes) - 1:
                 matched_tests[0] += ","
-        matched_tests[0] += " evulation)"
+        matched_tests[0] += " evaluation)"
     return matched_tests
 
 # Mach complete blood picture
