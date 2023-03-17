@@ -2,7 +2,8 @@ import csv
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-import haematology
+from haematology import HaematologyLab
+from microbiology import MicrobiologyLab
 import os
 import pandas as pd
 from joblib import load
@@ -154,9 +155,13 @@ def parse_all_summary_services():
     LST = read_lst(LSTPath)
     # define summary services information
     BPATProjectFolder = '\\\\ctc-network.intranet\\dfs\\BPATCR\\Contract-Archive\\Project\\Imago'
+    # define local lab database path
+    local_lab_db_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\LocalLabTestsDB.xlsx"
     # Define unique test names for haematology
     HaematologyTests = []
     TestsForCtcNo = {}
+    # Initialize haematology test object
+    HaemaLab = HaematologyLab(db_path=local_lab_db_path)
     # Define DataFrame to store service information
     AllServices = pd.DataFrame(columns=['CtcNo', 'Item', 'Description'])
     # Create pandas data frame to store service information
@@ -226,7 +231,7 @@ def parse_all_summary_services():
                     filtered_sentence = [w.lower() for w in filtered_sentence]
                     # Interpret tests
                     # Match Coagulation tests
-                    CTest = haematology.match_coagulation_tests(row[0], filtered_sentence, CurrentHaematologyTest)
+                    CTest = HaemaLab.match_coagulation_tests(row[0], filtered_sentence, CurrentHaematologyTest)
                     # if CTest is not empty
                     if len(CTest) > 0:
                         # print(CTest)
@@ -236,7 +241,7 @@ def parse_all_summary_services():
                             test2 = test.strip()
                             CurrentHaematologyTest.append(test2)
                     # Blood Film Examination
-                    BloodFilms = haematology.match_blood_film_examination(row[0], filtered_sentence,
+                    BloodFilms = HaemaLab.match_blood_film_examination(row[0], filtered_sentence,
                                                                           CurrentHaematologyTest)
                     if len(BloodFilms) > 0:
                         # Add all tests to HaematologyTests if not exists
@@ -247,7 +252,7 @@ def parse_all_summary_services():
                             CurrentHaematologyTest.append(test2)
                         continue
                     # Complete Blood Picture
-                    CBC = haematology.match_complete_blood_picture(row[0], filtered_sentence, CurrentHaematologyTest)
+                    CBC = HaemaLab.match_complete_blood_picture(row[0], filtered_sentence, CurrentHaematologyTest)
                     if len(CBC) > 0:
                         # Add all tests to HaematologyTests if not exists
                         # (CBC)
@@ -257,7 +262,7 @@ def parse_all_summary_services():
                             CurrentHaematologyTest.append(test2)
                         continue
                     # Typing
-                    BTyping = haematology.match_blood_typing(row[0], filtered_sentence, CurrentHaematologyTest)
+                    BTyping = HaemaLab.match_blood_typing(row[0], filtered_sentence, CurrentHaematologyTest)
                     if len(BTyping) > 0:
                         # Add all tests to HaematologyTests if not exists
                         # print(BTyping)
@@ -312,7 +317,7 @@ def parse_all_summary_services():
         # find test in database
         print(Site)
         # Print test group
-        print(haematology.render_haematology_test_group(T["Haematology"]))
+        print(HaemaLab.render_haematology_test_group(T["Haematology"]))
         print("End")
         print("---------------------------------")
         # Encode to json
@@ -324,6 +329,13 @@ def render_form_for_study(Study):
     # define local service tracker information
     LSTPath = '\\\\ctc-network.intranet\\dfs\\BIOT\\01 Study Management\\02 Trackers\\Local Services Tracker.xlsm'
     LST = read_lst(LSTPath)
+    # define local lab database path
+    local_lab_db_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\LocalLabTestsDB.xlsx"
+    rr_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\03 QMH Department of Microbiology\\MB_RI_Other Tests_20230317.docx"
+    # Initialize haematology lab
+    HaemaLab = HaematologyLab(local_lab_db_path)
+    # Initialize micribiology lab
+    MicroLab = MicrobiologyLab(db_path=local_lab_db_path, rr_path=rr_path)
     # define export folder path
     UseExportPath = True
     ExportPaths = ['\\\\ctc-network.intranet\\dfs\\BIOTR\\01 Ongoing Studies\\', '\\\\ctc-network.intranet\\dfs\\BIOTR\\02 Closed Studies']
@@ -343,9 +355,12 @@ def render_form_for_study(Study):
         print('Summary of Service not Found!')
         return
     CurrentHaematologyTest = []
+    CurrentMicrobiologyTest = []
     for index, row in ServiceDf.iterrows():
+        # Predict local lab
+        predicted_lab = parse_local_lab(row[1], row[0])
         # Match haematology
-        if parse_local_lab(row[1], row[0]) == LocalLab.haematology:
+        if predicted_lab == LocalLab.haematology:
             # Update flag
             # Print item name
             # print(row[0])
@@ -362,55 +377,36 @@ def render_form_for_study(Study):
             # To lower case
             filtered_sentence = [w.lower() for w in filtered_sentence]
             # Interpret tests
-            # Match Coagulation tests
-            CTest = haematology.match_coagulation_tests(row[0], filtered_sentence, CurrentHaematologyTest)
-            # if CTest is not empty
-            if len(CTest) > 0:
-                # print(CTest)
-                # Add all tests to HaematologyTests if not exists
-                for test in CTest:
+            matched_tests = HaemaLab.interpret_tests(row[0], filtered_sentence, CurrentHaematologyTest)
+            # Append to CurrentHaematologyTest
+            if len(matched_tests) > 0:
+                for test in matched_tests:
                     # trim test
                     test2 = test.strip()
                     CurrentHaematologyTest.append(test2)
-            # Blood Film Examination
-            BloodFilms = haematology.match_blood_film_examination(row[0], filtered_sentence, CurrentHaematologyTest)
-            if len(BloodFilms) > 0:
-                # Add all tests to HaematologyTests if not exists
-                # print(BloodFilms)
-                for test in BloodFilms:
-                    # trim test
-                    test2 = test.strip()
-                    CurrentHaematologyTest.append(test2)
-                continue
-            # Complete Blood Picture
-            CBC = haematology.match_complete_blood_picture(row[0], filtered_sentence, CurrentHaematologyTest)
-            if len(CBC) > 0:
-                # Add all tests to HaematologyTests if not exists
-                # (CBC)
-                for test in CBC:
-                    # trim test
-                    test2 = test.strip()
-                    CurrentHaematologyTest.append(test2)
-                continue
-            # Typing
-            BTyping = haematology.match_blood_typing(row[0], filtered_sentence, CurrentHaematologyTest)
-            if len(BTyping) > 0:
-                # Add all tests to HaematologyTests if not exists
-                # print(BTyping)
-                for test in BTyping:
-                    # trim test
-                    test2 = test.strip()
-                    CurrentHaematologyTest.append(test2)
-                continue
-            # None matched
-            if len(CTest) == 0 and len(BloodFilms) == 0 and len(CBC) == 0 and len(BTyping) == 0:
-                # Add test to HaematologyTests if not exists
-                row[0] = row[0].strip()
-                CurrentHaematologyTest.append(row[0])
-                # print([row[0]])
             # Remove duplicates
             CurrentHaematologyTest = list(dict.fromkeys(CurrentHaematologyTest))
-    # Render Form
+        elif predicted_lab == LocalLab.microbiology:
+            # Remove stop words
+            stop_words = set(stopwords.words('english'))
+            # Tokenize
+            word_tokens = word_tokenize(row[1])
+            filtered_sentence = [w for w in word_tokens if not w in stop_words]
+            # Remove punctuation
+            # filtered_sentence = [w for w in filtered_sentence if w.isalnum()]
+            # To lower case
+            filtered_sentence = [w.lower() for w in filtered_sentence]
+            # Interpret tests
+            matched_tests = MicroLab.interpret_tests(row[0], filtered_sentence, CurrentMicrobiologyTest)
+            # Append to CurrentHaematologyTest
+            if len(matched_tests) > 0:
+                for test in matched_tests:
+                    # trim test
+                    test2 = test.strip()
+                    CurrentMicrobiologyTest.append(test2)
+            # Remove duplicates
+            CurrentMicrobiologyTest = list(dict.fromkeys(CurrentMicrobiologyTest))
+            continue
     if len(CurrentHaematologyTest) == 0:
         print('No Haematology Tests Found!')
         return
@@ -418,10 +414,10 @@ def render_form_for_study(Study):
         print('Haematology Tests Found!')
         # Remove duplicates
         CurrentHaematologyTest = list(dict.fromkeys(CurrentHaematologyTest))
-        TestGroup = haematology.render_haematology_test_group(CurrentHaematologyTest)
+        TestGroup = HaemaLab.render_haematology_test_group(CurrentHaematologyTest)
         # Set up word document
         FormPath = '.\\FormTemplateHaemaLab.docx'
-        FormDoc = haematology.OpenHaemaFormTemplate(FormPath)
+        FormDoc = HaemaLab.open_haema_form_template(FormPath)
         # Fill study info
         if len(FormDoc.tables[0].rows[2].cells[1].paragraphs) > 1:
             SiteCell2 = FormDoc.tables[0].rows[2].cells[1].paragraphs[1]
@@ -458,6 +454,8 @@ def render_form_for_study(Study):
                 FormDoc.tables[1].rows[3].cells[1].paragraphs[0].runs[0].font.size = Pt(10)
         # Loop through tests
         print("Rendering Haematology Test Form...")
+        # Test remarks
+        test_remarks = []
         for TG in TestGroup:
             # Print all test group
             # print(TG)
@@ -491,6 +489,9 @@ def render_form_for_study(Study):
                     if test['specimen'] not in CollectionTubes:
                         CollectionTubes.append(test['specimen'])
                 RowFilled = True
+                # Add test remarks if any
+                if isinstance(test['remarks'], str) and len(test['remarks']) > 0:
+                    test_remarks.append(test['remarks'])
             row1.cells[1].text = Content
             # Add collection tubes paragraph
             if len(CollectionTubes) > 0:
@@ -527,17 +528,27 @@ def render_form_for_study(Study):
         Table = FormDoc.tables[2]._tbl
         RemoveRow = FormDoc.tables[2].rows[2]._tr
         Table.remove(RemoveRow)
+        # Add test remarks to the last row of the table
+        if len(test_remarks) > 0:
+            row = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 1]
+            for R in test_remarks:
+                para_remark = row.cells[1].add_paragraph()
+                para_run = para_remark.add_run(R)
+                para_run.font.italic = True
+                para_run.font.bold = True
+                para_run.font.color.rgb = RGBColor(0x00, 0x80, 0x00)
+                para_run.font.size = Pt(10)
         try:
             # Create a file name
             site = LST.loc[LST['CTC No.'] == Study]
-            ExportFileName = ''
+            RRExportFileName = ''
             if (len(site) > 0):
-                ExportFileName = '[AutoGen] ' + site.iloc[0,0] + '_' + site.iloc[0,2] + '_' + site.iloc[0,1] +'_HemaForm.docx'
+                RRExportFileName = '[AutoGen] ' + site.iloc[0,0] + '_' + site.iloc[0,2] + '_' + site.iloc[0,1] + '_HemaForm.docx'
             else:
-                ExportFileName = '[AutoGen] ' + Study + ' HemaForm.docx'
+                RRExportFileName = '[AutoGen] ' + Study + '_HemaForm.docx'
             if not UseExportPath:
-                FormDoc.save(ExportFileName)
-                print("Haematology Test Form Rendered: " + ExportFileName)
+                FormDoc.save(RRExportFileName)
+                print("Haematology Test Form Rendered: " + RRExportFileName)
             else:
                 # find study folder in export path
                 StudyFolder = ''
@@ -558,16 +569,56 @@ def render_form_for_study(Study):
                 if StudyFolder == '':
                     print('Error: Study folder not found')
                     print('Export to default path')
-                    FormDoc.save(ExportFileName)
+                    FormDoc.save(RRExportFileName)
                     return
                 else:
-                    FormDoc.save(os.path.join(StudyFolder, ExportFileName))
-                    print("Haematology Test Form Rendered: " + StudyFolder + "\\" + ExportFileName)
-                    return
+                    FormDoc.save(os.path.join(StudyFolder, RRExportFileName))
+                    print("Haematology Test Form Rendered: " + StudyFolder + "\\" + RRExportFileName)
         except:
             print('Error: File is open')
-            return
-        print('OK')
+    if len(CurrentMicrobiologyTest) == 0:
+        print('No Microbiology Test')
+    else:
+        print('Microbiology Test Found!')
+        print(CurrentMicrobiologyTest)
+        # Create a file name
+        site = LST.loc[LST['CTC No.'] == Study]
+        RRExportFileName = ''
+        if (len(site) > 0):
+            RRExportFileName = '[AutoGen] ' + site.iloc[0, 0] + '_' + site.iloc[0, 2] + '_' + site.iloc[
+                0, 1] + '_MicroReferenceRanges.docx'
+        else:
+            RRExportFileName = '[AutoGen] ' + Study + '_MicroReferenceRanges.docx'
+        if not UseExportPath:
+            if MicroLab.render_reference_range_request(Study, CurrentMicrobiologyTest, RRExportFileName):
+                print("Haematology Test Form Rendered: " + RRExportFileName)
+        else:
+            # find study folder in export path
+            StudyFolder = ''
+            for ExportPath in ExportPaths:
+                for dirs in os.listdir(ExportPath):
+                    if dirs.startswith(CtcNoDigit + '_'):
+                        StudyFolder = os.path.join(ExportPath, dirs)
+                        # Check sub folder
+                        for dirs2 in os.listdir(StudyFolder):
+                            if dirs2.startswith('03 '):
+                                StudyFolder = os.path.join(StudyFolder, dirs2)
+                                break
+                        break
+                    if StudyFolder != '':
+                        break
+                if StudyFolder != '':
+                    break
+            if StudyFolder == '':
+                print('Error: Study folder not found')
+                print('Export to default path')
+                if MicroLab.render_reference_range_request(Study, CurrentMicrobiologyTest, os.path.join(StudyFolder, RRExportFileName)):
+                    print('Microbiology Reference Range File Created: ' + RRExportFileName)
+                return
+            else:
+                if MicroLab.render_reference_range_request(Study, CurrentMicrobiologyTest, os.path.join(StudyFolder, RRExportFileName)):
+                    print('Microbiology Reference Range File Created: ' + os.path.join(StudyFolder, RRExportFileName))
+    print('OK')
 
 
 # Press the green button in the gutter to run the script.
