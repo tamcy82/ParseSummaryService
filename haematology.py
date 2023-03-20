@@ -1,7 +1,10 @@
 # Haematology lab module
 # Interpreting haematology lab test
+
 import pandas as pd
 from docx import Document
+from fuzzywuzzy import fuzz
+import re
 
 # Path: haematology.py
 
@@ -37,6 +40,7 @@ class HaematologyLab:
     # Interpret tests
     def interpret_tests(self, item, description, all_tests):
         matched_tests = []
+        # Check special tests
         CTest = self.match_coagulation_tests(item, description, all_tests)
         # if CTest is not empty
         if len(CTest) > 0:
@@ -59,7 +63,6 @@ class HaematologyLab:
         BTyping = self.match_blood_typing(item, description, all_tests)
         if len(BTyping) > 0:
             # Add all tests to HaematologyTests if not exists
-            # print(BTyping)
             for test in BTyping:
                 matched_tests.append(test)
         # None matched
@@ -165,7 +168,37 @@ class HaematologyLab:
     def render_haematology_test_group(self, T):
         TestGroup = []
         for test in T:
+            # Use multiple method to find test in HaematologyTestsDB
+            # Exact match
+            # Search for test in HaematologyTestsDB
             SearchTest = self.HaematologyTestsDB.loc[self.HaematologyTestsDB['test'] == test]
+            # Check alt_name column if not found
+            if len(SearchTest) == 0:
+                # Loop through alt_name column
+                for index, row in self.HaematologyTestsDB.iterrows():
+                    # Check if test in alt_name
+                    if test in row['alt_name']:
+                        SearchTest = self.HaematologyTestsDB.loc[index]
+                        break
+            # If not found, clean the test name and search again
+            if len(SearchTest) == 0:
+                # Extract alphanumeric and '-' characters from SearchTest with regex
+                test_clean = re.search(r'[\w\- ]+', test).group(0)
+                # Trim trailing and leading whitespace
+                test_clean = test_clean.strip()
+                # Redo search
+                SearchTest = self.HaematologyTestsDB.loc[self.HaematologyTestsDB['test'] == test_clean]
+                if len(SearchTest) == 0:
+                    for index, row in self.HaematologyTestsDB.iterrows():
+                        if test_clean in row['alt_name']:
+                            SearchTest = self.HaematologyTestsDB.loc[index]
+                            break
+            # Find test with similar name
+            if len(SearchTest) == 0:
+                for index, row in self.HaematologyTestsDB.iterrows():
+                    if len(test) > 5 and fuzz.token_sort_ratio(test, row['test']) > 80:
+                        SearchTest = self.HaematologyTestsDB.loc[index]
+                        break
             # if found
             if len(SearchTest) > 0:
                 thisGroup = SearchTest.iloc[0, 3]

@@ -25,8 +25,8 @@ def read_lst(path):
     return df
 
 
-# Import all Summary Services excel file into pandas dataframe
-def read_summary_services(path):
+# Import all Services from budget's Excel file into pandas dataframe
+def read_bpat_study_budget(path):
     # Get sheet names
     try:
         xl = pd.ExcelFile(path)
@@ -41,8 +41,8 @@ def read_summary_services(path):
         return False
 
 
-# Load summary of service file from a single study
-def get_summary_service_by_ctcno(CtcNo):
+# Load budget interpretation of a single study
+def get_budget_interpretation_by_ctcno(CtcNo):
     # Define root path
     BPATProjectFolder = '\\\\ctc-network.intranet\\dfs\\BPATCR\\Contract-Archive\\Project'
     CtcNoDigits = ''
@@ -61,31 +61,31 @@ def get_summary_service_by_ctcno(CtcNo):
                 break
     if StudyPath == '':
         return False
-    # Define summary of service file
-    SummaryServiceFile = ''
-    # Find summary service file
+    # Define budget file
+    latest_budget_file = ''
+    # Find budget files
     # Walk through all files in study folder
     for root, dirs, files in os.walk(StudyPath):
         # Loop through all files
         for file in files:
             # Only xlsx file
             if file.endswith('.xlsx') or file.endswith('.xls'):
-                if SummaryServiceFile != '':
+                if latest_budget_file != '':
                     # Check the modification time of the file
-                    if os.path.getmtime(os.path.join(root, file)) > os.path.getmtime(SummaryServiceFile):
+                    if os.path.getmtime(os.path.join(root, file)) > os.path.getmtime(latest_budget_file):
                         # Update the value
-                        SummaryServiceFile = os.path.join(root, file)
+                        latest_budget_file = os.path.join(root, file)
                 else:
                     # Add new key
-                    SummaryServiceFile = os.path.join(root, file)
-    if SummaryServiceFile == '':
+                    latest_budget_file = os.path.join(root, file)
+    if latest_budget_file == '':
         return False
     # Get sheet names
-    xl = pd.ExcelFile(SummaryServiceFile)
+    xl = pd.ExcelFile(latest_budget_file)
     sheet_names = xl.sheet_names
     # Read sheet with name 'Interpretation'
     if 'Interpretation' in sheet_names:
-        df = pd.read_excel(SummaryServiceFile, 'Interpretation', header=0)
+        df = pd.read_excel(latest_budget_file, 'Interpretation', header=0)
     else:
         return False
     return df
@@ -148,12 +148,12 @@ def parse_local_lab(item, description):
         return False
 
 
-# Parse all summary of services
-def parse_all_summary_services():
+# Parse all budget interpretation files
+def parse_all_budget_interpretation():
     # define local service tracker information
     LSTPath = '\\\\ctc-network.intranet\\dfs\\BIOT\\01 Study Management\\02 Trackers\\Local Services Tracker.xlsm'
     LST = read_lst(LSTPath)
-    # define summary services information
+    # define budgets folder
     BPATProjectFolder = '\\\\ctc-network.intranet\\dfs\\BPATCR\\Contract-Archive\\Project\\Imago'
     # define local lab database path
     local_lab_db_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\LocalLabTestsDB.xlsx"
@@ -162,10 +162,10 @@ def parse_all_summary_services():
     TestsForCtcNo = {}
     # Initialize haematology test object
     HaemaLab = HaematologyLab(db_path=local_lab_db_path)
-    # Define DataFrame to store service information
-    AllServices = pd.DataFrame(columns=['CtcNo', 'Item', 'Description'])
-    # Create pandas data frame to store service information
-    # ServiceList = pd.DataFrame(columns=['Service', 'Test Interpretation'])
+    # Define DataFrame to store budget information
+    AllInterpretations = pd.DataFrame(columns=['CtcNo', 'Item', 'Description'])
+    # Create pandas data frame to store budget information
+    # AllInterpretations = pd.DataFrame(columns=['Service', 'Test Interpretation'])
     # Read the first level of BPATProjectFolder
     # for SponsorFolder in os.listdir(BPATProjectFolder):
     #    ServiceFolder = BPATProjectFolder + '\\' + SponsorFolder
@@ -194,7 +194,7 @@ def parse_all_summary_services():
         print("Loading " + CtcNo + "...")
         # Check file exists
         if os.path.exists(ServicePath):
-            ServiceDf = read_summary_services(ServicePath)
+            ServiceDf = read_bpat_study_budget(ServicePath)
             # print(ServiceDf[0:10])
             if ServiceDf is False:
                 print("Service interpretation not found in Summary Services")
@@ -210,14 +210,12 @@ def parse_all_summary_services():
             HasHaematology = False
             CurrentHaematologyTest = []
             # ThisService = pd.DataFrame({ "CtcNo" : CtcNo, "Item" : ServiceDf.iloc[:, 0], "Description" : ServiceDf.iloc[:, 1] })
-            # AllServices = pd.concat([AllServices, ThisService], ignore_index=True)
-            # print(len(AllServices))
+            # AllInterpretations = pd.concat([AllInterpretations, ThisService], ignore_index=True)
+            # print(len(AllInterpretations))
             for index, row in ServiceDf.iterrows():
                 if parse_local_lab(row[1], row[0]) == LocalLab.haematology:
                     # Update flag
                     HasHaematology = True
-                    # Print item name
-                    # print(row[0])
                     # Append to ServiceList
                     # ServiceList = ServiceList.append({'Service': row[0], 'Test Interpretation': row[1]}, ignore_index=True)
                     # Clean row[1] using nltk
@@ -234,7 +232,6 @@ def parse_all_summary_services():
                     CTest = HaemaLab.match_coagulation_tests(row[0], filtered_sentence, CurrentHaematologyTest)
                     # if CTest is not empty
                     if len(CTest) > 0:
-                        # print(CTest)
                         # Add all tests to HaematologyTests if not exists
                         for test in CTest:
                             # trim test
@@ -245,7 +242,6 @@ def parse_all_summary_services():
                                                                           CurrentHaematologyTest)
                     if len(BloodFilms) > 0:
                         # Add all tests to HaematologyTests if not exists
-                        # print(BloodFilms)
                         for test in BloodFilms:
                             # trim test
                             test2 = test.strip()
@@ -255,7 +251,6 @@ def parse_all_summary_services():
                     CBC = HaemaLab.match_complete_blood_picture(row[0], filtered_sentence, CurrentHaematologyTest)
                     if len(CBC) > 0:
                         # Add all tests to HaematologyTests if not exists
-                        # (CBC)
                         for test in CBC:
                             # trim test
                             test2 = test.strip()
@@ -265,7 +260,6 @@ def parse_all_summary_services():
                     BTyping = HaemaLab.match_blood_typing(row[0], filtered_sentence, CurrentHaematologyTest)
                     if len(BTyping) > 0:
                         # Add all tests to HaematologyTests if not exists
-                        # print(BTyping)
                         for test in BTyping:
                             # trim test
                             test2 = test.strip()
@@ -276,7 +270,6 @@ def parse_all_summary_services():
                         # Add test to HaematologyTests if not exists
                         row[0] = row[0].strip()
                         CurrentHaematologyTest.append(row[0])
-                        # print([row[0]])
                     # Remove duplicates
                     CurrentHaematologyTest = list(dict.fromkeys(CurrentHaematologyTest))
             # Set haematology tests for CTC No.
@@ -298,7 +291,7 @@ def parse_all_summary_services():
             print("File not found: " + ServicePath)
 
     # Export into excel
-    # AllServices.to_excel("AllServices.xlsx", index=False)
+    # AllInterpretations.to_excel("AllInterpretations.xlsx", index=False)
 
     # Print all haematology tests
     # print(HaematologyTests)
@@ -335,7 +328,7 @@ def render_form_for_study(Study):
     # Initialize haematology lab
     HaemaLab = HaematologyLab(local_lab_db_path)
     # Initialize micribiology lab
-    MicroLab = MicrobiologyLab(db_path=local_lab_db_path, rr_path=rr_path)
+    MicroLab = MicrobiologyLab(lst=LST, db_path=local_lab_db_path, rr_path=rr_path)
     # define export folder path
     UseExportPath = True
     ExportPaths = ['\\\\ctc-network.intranet\\dfs\\BIOTR\\01 Ongoing Studies\\', '\\\\ctc-network.intranet\\dfs\\BIOTR\\02 Closed Studies']
@@ -347,16 +340,16 @@ def render_form_for_study(Study):
             CtcNoDigit += c
         else:
             break
-    # Load summary of service file
-    ServiceDf = get_summary_service_by_ctcno(Study)
-    print("Loading summary of service for " + Study + "...")
+    # Load budget file
+    BudgetDf = get_budget_interpretation_by_ctcno(Study)
+    print("Loading budget interpretation for " + Study + "...")
     # Open
-    if ServiceDf is False:
-        print('Summary of Service not Found!')
+    if BudgetDf is False:
+        print('Budget interpretation not Found!')
         return
     CurrentHaematologyTest = []
     CurrentMicrobiologyTest = []
-    for index, row in ServiceDf.iterrows():
+    for index, row in BudgetDf.iterrows():
         # Predict local lab
         predicted_lab = parse_local_lab(row[1], row[0])
         # Match haematology
@@ -412,6 +405,7 @@ def render_form_for_study(Study):
         return
     else:
         print('Haematology Tests Found!')
+        print("Rendering Haematology Test Form...")
         # Remove duplicates
         CurrentHaematologyTest = list(dict.fromkeys(CurrentHaematologyTest))
         TestGroup = HaemaLab.render_haematology_test_group(CurrentHaematologyTest)
@@ -453,7 +447,6 @@ def render_form_for_study(Study):
                 FormDoc.tables[1].rows[3].cells[1].text = 'Contact Number: ' + site.iloc[0, 29]
                 FormDoc.tables[1].rows[3].cells[1].paragraphs[0].runs[0].font.size = Pt(10)
         # Loop through tests
-        print("Rendering Haematology Test Form...")
         # Test remarks
         test_remarks = []
         for TG in TestGroup:
@@ -580,7 +573,6 @@ def render_form_for_study(Study):
         print('No Microbiology Test')
     else:
         print('Microbiology Test Found!')
-        print(CurrentMicrobiologyTest)
         # Create a file name
         site = LST.loc[LST['CTC No.'] == Study]
         RRExportFileName = ''
