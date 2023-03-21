@@ -408,7 +408,7 @@ def render_form_for_study(Study):
         print("Rendering Haematology Test Form...")
         # Remove duplicates
         CurrentHaematologyTest = list(dict.fromkeys(CurrentHaematologyTest))
-        TestGroup = HaemaLab.render_haematology_test_group(CurrentHaematologyTest)
+        haema_test_group = HaemaLab.render_haematology_test_group(CurrentHaematologyTest)
         # Set up word document
         FormPath = '.\\FormTemplateHaemaLab.docx'
         FormDoc = HaemaLab.open_haema_form_template(FormPath)
@@ -449,7 +449,7 @@ def render_form_for_study(Study):
         # Loop through tests
         # Test remarks
         test_remarks = []
-        for TG in TestGroup:
+        for TG in haema_test_group:
             # Print all test group
             # print(TG)
             # Content
@@ -610,9 +610,12 @@ def render_form_for_study(Study):
             else:
                 if MicroLab.render_reference_range_request(Study, CurrentMicrobiologyTest, os.path.join(StudyFolder, RRExportFileName)):
                     print('Microbiology Reference Range File Created: ' + os.path.join(StudyFolder, RRExportFileName))
+        print("Rendering Microbiology Test Form...")
+        micbio_test_group = MicroLab.render_test_group(CurrentMicrobiologyTest)
+        MicroLab.render_test_form(Study, micbio_test_group)
     print('OK')
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    render_form_for_study("2305HKU1")
+    render_form_for_study("2347HKU1")

@@ -4,7 +4,8 @@ import os
 
 import pandas as pd
 from docx import Document
-from docx.shared import Pt
+from docx.enum.text import WD_COLOR_INDEX
+from docx.shared import Pt, RGBColor
 from fuzzywuzzy import fuzz
 import re
 
@@ -253,7 +254,7 @@ class MicrobiologyLab:
             return False
         MicbioForm = self.open_micro_form_template(self.test_form_template_path)
         # Find site from lst
-        site_info = site.loc[site['CTC No.'] == site]
+        site_info = self.lst.loc[self.lst['CTC No.'] == site]
         # Extract digits of site
         CtcNoDigit = ''
         # Extract first digits
@@ -270,47 +271,61 @@ class MicrobiologyLab:
         SiteCellRun = SiteCell2.add_run('CTC' + CtcNoDigit)
         SiteCellRun.bold = True
         SiteCellRun.font.size = Pt(14)
-        if len(site) > 0:
-            if isinstance(site.iloc[0, 30], str):
+        if len(site_info) > 0:
+            if isinstance(site_info.iloc[0, 30], str):
                 # Para0 = FormDoc.tables[0].rows[3].cells[1].paragraphs[0]
                 # Para0.add_run('Rept Locn').font.size = Pt(9)
                 if len(MicbioForm.tables[0].rows[3].cells[1].paragraphs) > 1:
                     Para1 = MicbioForm.tables[0].rows[3].cells[1].paragraphs[1]
-                    Para1Run = Para1.add_run(site.iloc[0, 30])
+                    Para1Run = Para1.add_run(site_info.iloc[0, 30])
                     Para1Run.bold = True
                     Para1Run.italic = True
                     Para1Run.font.size = Pt(14)
                 else:
                     Para1 = MicbioForm.tables[0].rows[3].cells[1].add_paragraph()
-                    Para1Run = Para1.add_run(site.iloc[0, 30])
+                    Para1Run = Para1.add_run(site_info.iloc[0, 30])
                     Para1Run.bold = True
                     Para1Run.italic = True
                     Para1Run.font.size = Pt(14)
-            if isinstance(site.iloc[0, 1], str):
+            if isinstance(site_info.iloc[0, 1], str):
                 MicbioForm.tables[1].rows[0].cells[0].text = ''
-                Prot1Run = MicbioForm.tables[1].rows[0].cells[0].paragraphs[0].add_run('Protocol: ' + site.iloc[0, 1])
+                Prot1Run = MicbioForm.tables[1].rows[0].cells[0].paragraphs[0].add_run('Protocol: ' + site_info.iloc[0, 1])
                 Prot1Run.font.size = Pt(10)
                 Prot1Run.bold = True
                 MicbioForm.tables[1].rows[0].cells[0].paragraphs[0].paragraph_format.space_before = Pt(6)
-            if isinstance(site.iloc[0, 28], str):
-                MicbioForm.tables[1].rows[3].cells[0].text = 'Contact Person: ' + site.iloc[0, 28]
+            if isinstance(site_info.iloc[0, 28], str):
+                MicbioForm.tables[1].rows[3].cells[0].text = 'Contact Person: ' + site_info.iloc[0, 28]
                 MicbioForm.tables[1].rows[3].cells[0].paragraphs[0].runs[0].font.size = Pt(10)
-            if isinstance(site.iloc[0, 29], str):
+            if isinstance(site_info.iloc[0, 29], str):
                 MicbioForm.tables[1].rows[3].cells[1].text = 'Contact Number: ' + site.iloc[0, 29]
                 MicbioForm.tables[1].rows[3].cells[1].paragraphs[0].runs[0].font.size = Pt(10)
         # Content
         # Get content row
         row1 = MicbioForm.tables[2].rows[1]
+        FirstPara = False
         # Loop through test groups
         for tg in test_groups:
             # Print all test group
-            print(tg)
+            # print(tg)
             # Loop through test with index
             CollectionTubes = []
             for index, test in enumerate(tg['Tests']):
-                para = row1.cells[0].add_paragraph()
-                run1 = para.add_run(test['code'])
+                if not FirstPara:
+                    FirstPara = True
+                    para = row1.cells[0].paragraphs[0]
+                else:
+                    para = row1.cells[0].add_paragraph()
+                para.paragraph_format.space_before = Pt(6)
+                para.paragraph_format.space_after = Pt(6)
+                if test['code'] != '':
+                    run1 = para.add_run(test['code'])
+                else:
+                    run1 = para.add_run('Unknown')
+                run1.font.highlight_color = WD_COLOR_INDEX.PINK
+                run1.font.size = Pt(10)
+                run1.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
                 run2 = para.add_run(' ' + test['test'])
+                run2.font.size = Pt(10)
                 # Add specimen to collection tubes if not exists
                 if isinstance(test['specimen'], str) and test['specimen'] != '':
                     if test['specimen'] not in CollectionTubes:
@@ -320,10 +335,13 @@ class MicrobiologyLab:
                 # Loop through collection tubes
                 for i, tube in enumerate(CollectionTubes):
                     if isinstance(tube, str) and tube != '':
-                        row1.cells[1].add_paragraph('[' + tube + ']')
+                        para = row1.cells[0].add_paragraph('[' + tube + ']')
+                        para.runs[0].font.size = Pt(10)
+                        para.paragraph_format.space_before = Pt(6)
+                        para.paragraph_format.space_after = Pt(6)
         try:
             RRExportFileName = ''
-            if (len(site) > 0):
+            if (len(site_info) > 0):
                 RRExportFileName = '[AutoGen] ' + site_info.iloc[0,0] + '_' + site_info.iloc[0,2] + '_' + site_info.iloc[0,1] + '_MicrobioForm.docx'
             else:
                 RRExportFileName = '[AutoGen] ' + site + '_MicrobioForm.docx'
