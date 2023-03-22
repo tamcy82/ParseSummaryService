@@ -1,9 +1,10 @@
-import csv
-
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+
+import blood_tube
 from haematology import HaematologyLab
 from microbiology import MicrobiologyLab
+from clinicalchemistry import ClinicalChemistryLab
 import os
 import pandas as pd
 from joblib import load
@@ -121,7 +122,7 @@ def read_folders(path):
 # Determine whether Haematology is contained within a text string
 # Use a pre-trained random forest model
 # Input: text string
-# Return True if it is, False if it is not
+# Return Abbreviation of Local Lab
 def parse_local_lab(item, description):
     # Import random forest model
     PathToModel = '.\\model.joblib'
@@ -195,7 +196,6 @@ def parse_all_budget_interpretation():
         # Check file exists
         if os.path.exists(ServicePath):
             ServiceDf = read_bpat_study_budget(ServicePath)
-            # print(ServiceDf[0:10])
             if ServiceDf is False:
                 print("Service interpretation not found in Summary Services")
                 continue
@@ -324,11 +324,12 @@ def render_form_for_study(Study):
     LST = read_lst(LSTPath)
     # define local lab database path
     local_lab_db_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\LocalLabTestsDB.xlsx"
+    chem_ec_db_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\01 QMH Division of Chemical Pathology\\Biochem_ECPath_Methodology_TAT 120320_20221221.xlsx"
     rr_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\03 QMH Department of Microbiology\\MB_RI_Other Tests_20230317.docx"
-    # Initialize haematology lab
+    # Initialize labs
     HaemaLab = HaematologyLab(local_lab_db_path)
-    # Initialize micribiology lab
     MicroLab = MicrobiologyLab(lst=LST, db_path=local_lab_db_path, rr_path=rr_path)
+    ChemLab = ClinicalChemistryLab(lst=LST, db_path=chem_ec_db_path)
     # define export folder path
     UseExportPath = True
     ExportPaths = ['\\\\ctc-network.intranet\\dfs\\BIOTR\\01 Ongoing Studies\\', '\\\\ctc-network.intranet\\dfs\\BIOTR\\02 Closed Studies']
@@ -349,15 +350,13 @@ def render_form_for_study(Study):
         return
     CurrentHaematologyTest = []
     CurrentMicrobiologyTest = []
+    CurrentChemistryTest = []
     for index, row in BudgetDf.iterrows():
         # Predict local lab
         predicted_lab = parse_local_lab(row[1], row[0])
         # Match haematology
         if predicted_lab == LocalLab.haematology:
-            # Update flag
-            # Print item name
-            # print(row[0])
-            # Clean row[1] using nltk
+            # Clean row[1]
             # Remove stop words
             stop_words = set(stopwords.words('english'))
             # Replace / with space
@@ -399,6 +398,27 @@ def render_form_for_study(Study):
                     CurrentMicrobiologyTest.append(test2)
             # Remove duplicates
             CurrentMicrobiologyTest = list(dict.fromkeys(CurrentMicrobiologyTest))
+            continue
+        elif predicted_lab == LocalLab.chemistry:
+            # Remove stop words
+            stop_words = set(stopwords.words('english'))
+            # Tokenize
+            word_tokens = word_tokenize(row[1])
+            filtered_sentence = [w for w in word_tokens if not w in stop_words]
+            # Remove punctuation
+            # filtered_sentence = [w for w in filtered_sentence if w.isalnum()]
+            # To lower case
+            filtered_sentence = [w.lower() for w in filtered_sentence]
+            # Interpret tests
+            matched_tests = ChemLab.interpret_tests(row[0], filtered_sentence, CurrentMicrobiologyTest)
+            # Append to CurrentChemistryTest
+            if len(matched_tests) > 0:
+                for test in matched_tests:
+                    # trim test
+                    test2 = test.strip()
+                    CurrentChemistryTest.append(test2)
+            # Remove duplicates
+            CurrentChemistryTest = list(dict.fromkeys(CurrentChemistryTest))
             continue
     if len(CurrentHaematologyTest) == 0:
         print('No Haematology Tests Found!')
@@ -450,8 +470,6 @@ def render_form_for_study(Study):
         # Test remarks
         test_remarks = []
         for TG in haema_test_group:
-            # Print all test group
-            # print(TG)
             # Content
             row1 = FormDoc.tables[2].add_row()
             row1.cells[0].text = u'\u25a1'
@@ -491,8 +509,13 @@ def render_form_for_study(Study):
                 # Loop through collection tubes
                 for i, tube in enumerate(CollectionTubes):
                     if isinstance(tube, str) and tube != '':
-                        row1.cells[1].add_paragraph('[' + tube + ']')
-                    # row1.cells[1].add_paragraph('[' + tube + ']').runs[0].font.color.rgb = RGBColor(0x00, 0xAA, 0x00)
+                        para = row1.cells[1].add_paragraph()
+                        para.add_run('[')
+                        run1 = para.add_run(tube)
+                        tube_color = blood_tube.get_blood_tube_colour(tube)
+                        if tube_color is not None:
+                            run1.font.color.rgb = RGBColor(tube_color[0], tube_color[1], tube_color[2])
+                        para.add_run(']')
             # Merge cell 1 with 2
             row1.cells[1].merge(row1.cells[2])
             # Move row
@@ -613,9 +636,13 @@ def render_form_for_study(Study):
         print("Rendering Microbiology Test Form...")
         micbio_test_group = MicroLab.render_test_group(CurrentMicrobiologyTest)
         MicroLab.render_test_form(Study, micbio_test_group)
+    if len(CurrentChemistryTest) == 0:
+        print('No Chemistry Test')
+    else:
+        print(CurrentChemistryTest)
     print('OK')
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    render_form_for_study("2347HKU1")
+    render_form_for_study("2262HKU1")

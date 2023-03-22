@@ -8,13 +8,14 @@ from docx.enum.text import WD_COLOR_INDEX
 from docx.shared import Pt, RGBColor
 from fuzzywuzzy import fuzz
 import re
+import blood_tube
 
 
 # Define Microbiology Lab
 class MicrobiologyLab:
 
     # Constructor
-    def __init__(self, lst, db_path = '.\\LocalLabTestsDB.xlsx', rr_path = '.\\MB_RI_Other Tests_20230317.docx'):
+    def __init__(self, lst, db_path='.\\LocalLabTestsDB.xlsx', rr_path='.\\MB_RI_Other Tests_20230317.docx'):
         # Define paths
         self.study_paths = ['\\\\ctc-network.intranet\\dfs\\BIOTR\\01 Ongoing Studies\\',
                             '\\\\ctc-network.intranet\\dfs\\BIOTR\\02 Closed Studies']
@@ -37,7 +38,6 @@ class MicrobiologyLab:
         self.MicrobiologyRRPath = rr_path
         # Define test form template
         self.test_form_template_path = ".\\FormTemplateMicbioLab.docx"
-        return
 
     # Load MicrobiologyTestsDB into pandas
     def load_microbiology_tests_db(self, path):
@@ -146,8 +146,29 @@ class MicrobiologyLab:
 
     # Render a reference range request document
     def render_reference_range_request(self, ctcno, tests, file_name):
-        # Open a reference range request template
-        document = self.open_micro_form_template(self.MicrobiologyRRPath)
+        # Check file exists
+        document = None
+        if os.path.exists(self.MicrobiologyRRPath):
+            # Open a reference range request template
+            document = self.open_micro_form_template(self.MicrobiologyRRPath)
+        else:
+            # Get the directory of self.MicrobiologyRRPath
+            dir = os.path.dirname(self.MicrobiologyRRPath)
+            # List all docx files in the directory
+            files = [f for f in os.listdir(dir) if f.endswith('.docx')]
+            # Define regex to match file name
+            regex = re.compile(r"^MB_RI_Other Tests_[0-9]{8}.*")
+            # Loop through all files
+            for f in files:
+                # If file matches regex
+                if regex.match(f):
+                    # Open the file
+                    document = self.open_micro_form_template(os.path.join(dir, f))
+                    break
+        # If document is None
+        if document is None:
+            print("Cannot find a reference range request template")
+            return False
         if len(tests) > 0:
             # Clone the test list
             remaining_tests = tests.copy()
@@ -159,8 +180,8 @@ class MicrobiologyLab:
                 test = RTable.cell(i, 0).text.strip()
                 # If test is not in tests, delete the row
                 if test not in tests:
-                    RemoveRow = RTable.rows[i]._tr
-                    RTable._tbl.remove(RemoveRow)
+                    remove_row = RTable.rows[i]._tr
+                    RTable._tbl.remove(remove_row)
                 else:
                     remaining_tests.remove(test)
             # If there are remaining tests, add them to the table
@@ -178,7 +199,7 @@ class MicrobiologyLab:
             # Set footer
             footer = document.sections[0].footer
             footer_para = footer.paragraphs[0]
-            footer_para.text = "Reference No.: CTC" + ctcno;
+            footer_para.text = "Reference No.: CTC" + ctcno
             for r in footer_para.runs:
                 r.font.italic = True
             # Save the document
@@ -194,53 +215,53 @@ class MicrobiologyLab:
             # Use multiple method to find test in HaematologyTestsDB
             # Exact match
             # Search for test in HaematologyTestsDB
-            SearchTest = self.MicrobiologyTestsDB.loc[self.MicrobiologyTestsDB['test'] == test]
+            search_test = self.MicrobiologyTestsDB.loc[self.MicrobiologyTestsDB['test'] == test]
             # Check alt_name column if not found
-            if len(SearchTest) == 0:
+            if len(search_test) == 0:
                 # Loop through alt_name column
                 for index, row in self.MicrobiologyTestsDB.iterrows():
                     # Check if test in alt_name
                     if test in row['alt_name']:
-                        SearchTest = self.MicrobiologyTestsDB.loc[index]
+                        search_test = self.MicrobiologyTestsDB.loc[index]
                         break
             # If not found, clean the test name and search again
-            if len(SearchTest) == 0:
-                # Extract alphanumeric and '-' characters from SearchTest with regex
+            if len(search_test) == 0:
+                # Extract alphanumeric and '-' characters from search_test with regex
                 test_clean = re.search(r'[\w\- ]+', test).group(0)
                 # Trim trailing and leading whitespace
                 test_clean = test_clean.strip()
                 # Redo search
-                SearchTest = self.MicrobiologyTestsDB.loc[self.MicrobiologyTestsDB['test'] == test_clean]
-                if len(SearchTest) == 0:
+                search_test = self.MicrobiologyTestsDB.loc[self.MicrobiologyTestsDB['test'] == test_clean]
+                if len(search_test) == 0:
                     for index, row in self.MicrobiologyTestsDB.iterrows():
                         if test_clean in row['alt_name']:
-                            SearchTest = self.MicrobiologyTestsDB.loc[index]
+                            search_test = self.MicrobiologyTestsDB.loc[index]
                             break
             # Find test with similar name
-            if len(SearchTest) == 0:
+            if len(search_test) == 0:
                 for index, row in self.MicrobiologyTestsDB.iterrows():
                     if len(test) > 5 and fuzz.token_sort_ratio(test, row['test']) > 80:
-                        SearchTest = self.MicrobiologyTestsDB.loc[index]
+                        search_test = self.MicrobiologyTestsDB.loc[index]
                         break
             # if found
-            if len(SearchTest) > 0:
-                thisGroup = SearchTest.iloc[0, 3]
+            if len(search_test) > 0:
+                thisGroup = search_test.iloc[0, 3]
                 MatchedTest = False
                 # if thisGroup is not empty
                 if thisGroup is not None:
                     for index, row in enumerate(TestGroup):
                         if row["TestGroup"] == thisGroup:
                             MatchedTest = True
-                            row['Tests'].append(SearchTest.iloc[0])
+                            row['Tests'].append(search_test.iloc[0])
                             break
                     if not MatchedTest:
-                        TestGroup.append({'TestGroup': thisGroup, 'Tests': [SearchTest.iloc[0]]})
+                        TestGroup.append({'TestGroup': thisGroup, 'Tests': [search_test.iloc[0]]})
                 else:
-                    TestGroup.append({'TestGroup': None, 'Tests': [SearchTest.iloc[0]]})
+                    TestGroup.append({'TestGroup': None, 'Tests': [search_test.iloc[0]]})
             else:
                 TestGroup.append({'TestGroup': None, 'Tests': [
-                    {'test': test, 'description': None, 'specimen': "", 'code': "", 'alt_name': "",
-                     'interpretation': None, 'is_optional': False, 'remarks': ''}]})
+                    {'lab': 'micbio', 'test': test, 'alt_name': "", 'specimen': "", 'code': "", 'section_order': None,
+                     'is_optional': False, 'remarks': ''}]})
         return TestGroup
 
     # Render a microbiology lab test form
@@ -302,7 +323,7 @@ class MicrobiologyLab:
         # Content
         # Get content row
         row1 = MicbioForm.tables[2].rows[1]
-        FirstPara = False
+        is_first_para = False
         # Loop through test groups
         for tg in test_groups:
             # Print all test group
@@ -310,15 +331,16 @@ class MicrobiologyLab:
             # Loop through test with index
             CollectionTubes = []
             for index, test in enumerate(tg['Tests']):
-                if not FirstPara:
-                    FirstPara = True
+                if not is_first_para:
+                    is_first_para = True
                     para = row1.cells[0].paragraphs[0]
                 else:
                     para = row1.cells[0].add_paragraph()
                 para.paragraph_format.space_before = Pt(6)
                 para.paragraph_format.space_after = Pt(6)
-                if test['code'] != '':
+                if isinstance(test['code'], str) and test['code'] != '':
                     run1 = para.add_run(test['code'])
+                    run1.font.size = Pt(10)
                 else:
                     run1 = para.add_run('Unknown')
                 run1.font.highlight_color = WD_COLOR_INDEX.PINK
@@ -335,10 +357,16 @@ class MicrobiologyLab:
                 # Loop through collection tubes
                 for i, tube in enumerate(CollectionTubes):
                     if isinstance(tube, str) and tube != '':
-                        para = row1.cells[0].add_paragraph('[' + tube + ']')
-                        para.runs[0].font.size = Pt(10)
+                        para = row1.cells[0].add_paragraph()
                         para.paragraph_format.space_before = Pt(6)
                         para.paragraph_format.space_after = Pt(6)
+                        para.add_run('[').font.size = Pt(10)
+                        run1 = para.add_run(tube)
+                        tube_color = blood_tube.get_blood_tube_colour(tube)
+                        if tube_color is not None:
+                            run1.font.color.rgb = RGBColor(tube_color[0], tube_color[1], tube_color[2])
+                        run1.font.size = Pt(10)
+                        para.add_run(']').font.size = Pt(10)
         try:
             RRExportFileName = ''
             if (len(site_info) > 0):

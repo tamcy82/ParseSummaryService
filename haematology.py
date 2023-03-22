@@ -12,11 +12,11 @@ import re
 class HaematologyLab:
 
     # Define Haematology tests
-    def __init__(self, db_path = '.\\LocalLabTestsDB.xlsx'):
+    def __init__(self, db_path='.\\LocalLabTestsDB.xlsx'):
         # Define coagulation tests
         self.CoagulationTests = ["PT", "aPTT", "INR", "Fibrinogen", "D-Dimer"]
         self.TypingTests = ["ABO", "RhD", "Phenotyping", "Antibody Screening", "Direct Antiglobulin Test",
-                       "Indirect Antiglobulin Test"]
+                            "Indirect Antiglobulin Test"]
         # Load HaematologyTestsDB
         self.HaematologyTestsDBPath = db_path
         self.HaematologyTestsDB = self.load_haematology_tests_db(self.HaematologyTestsDBPath)
@@ -201,21 +201,21 @@ class HaematologyLab:
                         break
             # if found
             if len(SearchTest) > 0:
-                thisGroup = SearchTest.iloc[0, 3]
+                this_group = SearchTest.iloc[0, 3]
                 MatchedTest = False
-                # if thisGroup is not empty
-                if thisGroup is not None:
+                # if this_group is not empty
+                if this_group is not None:
                     for index, row in enumerate(TestGroup):
-                        if row["TestGroup"] == thisGroup:
+                        if row["TestGroup"] == this_group:
                             MatchedTest = True
                             row['Tests'].append(SearchTest.iloc[0])
                             break
                     if not MatchedTest:
-                        TestGroup.append({'TestGroup': thisGroup, 'Tests': [SearchTest.iloc[0]]})
+                        TestGroup.append({'TestGroup': this_group, 'Tests': [SearchTest.iloc[0]]})
                 else:
                     TestGroup.append({'TestGroup': None, 'Tests': [SearchTest.iloc[0]]})
             else:
                 TestGroup.append({'TestGroup': None, 'Tests': [
-                    {'test': test, 'description': None, 'specimen': "", 'alt_name': "", 'interpretation': None,
+                    {'lab': 'haema', 'test': test, 'alt_name': "", 'specimen': "", 'code': "", 'section_order': None,
                      'is_optional': False, 'remarks': ''}]})
         return TestGroup
