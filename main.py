@@ -162,7 +162,7 @@ def parse_all_budget_interpretation():
     HaematologyTests = []
     TestsForCtcNo = {}
     # Initialize haematology test object
-    HaemaLab = HaematologyLab(db_path=local_lab_db_path)
+    HaemaLab = HaematologyLab(LST, db_path=local_lab_db_path)
     # Define DataFrame to store budget information
     AllInterpretations = pd.DataFrame(columns=['CtcNo', 'Item', 'Description'])
     # Create pandas data frame to store budget information
@@ -327,7 +327,7 @@ def render_form_for_study(Study):
     chem_ec_db_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\01 QMH Division of Chemical Pathology\\Biochem_ECPath_Methodology_TAT 120320_20221221.xlsx"
     rr_path = "\\\\ctc-network.intranet\\dfs\\BIOT\\06 Laboratories and Site Services\\03 QMH Department of Microbiology\\MB_RI_Other Tests_20230317.docx"
     # Initialize labs
-    HaemaLab = HaematologyLab(local_lab_db_path)
+    HaemaLab = HaematologyLab(lst=LST, db_path=local_lab_db_path)
     MicroLab = MicrobiologyLab(lst=LST, db_path=local_lab_db_path, rr_path=rr_path)
     ChemLab = ClinicalChemistryLab(lst=LST, db_path=chem_ec_db_path)
     # define export folder path
@@ -406,11 +406,11 @@ def render_form_for_study(Study):
             word_tokens = word_tokenize(row[1])
             filtered_sentence = [w for w in word_tokens if not w in stop_words]
             # Remove punctuation
-            # filtered_sentence = [w for w in filtered_sentence if w.isalnum()]
+            filtered_sentence = [w for w in filtered_sentence if w.isalnum()]
             # To lower case
             filtered_sentence = [w.lower() for w in filtered_sentence]
             # Interpret tests
-            matched_tests = ChemLab.interpret_tests(row[0], filtered_sentence, CurrentMicrobiologyTest)
+            matched_tests = ChemLab.interpret_tests(row[0], filtered_sentence, CurrentChemistryTest)
             # Append to CurrentChemistryTest
             if len(matched_tests) > 0:
                 for test in matched_tests:
@@ -420,178 +420,17 @@ def render_form_for_study(Study):
             # Remove duplicates
             CurrentChemistryTest = list(dict.fromkeys(CurrentChemistryTest))
             continue
+    # Haematology section
     if len(CurrentHaematologyTest) == 0:
         print('No Haematology Tests Found!')
-        return
     else:
         print('Haematology Tests Found!')
         print("Rendering Haematology Test Form...")
         # Remove duplicates
         CurrentHaematologyTest = list(dict.fromkeys(CurrentHaematologyTest))
-        haema_test_group = HaemaLab.render_haematology_test_group(CurrentHaematologyTest)
-        # Set up word document
-        FormPath = '.\\FormTemplateHaemaLab.docx'
-        FormDoc = HaemaLab.open_haema_form_template(FormPath)
-        # Fill study info
-        if len(FormDoc.tables[0].rows[2].cells[1].paragraphs) > 1:
-            SiteCell2 = FormDoc.tables[0].rows[2].cells[1].paragraphs[1]
-        else:
-            SiteCell2 = FormDoc.tables[0].rows[2].cells[1].add_paragraph()
-        SiteCell2.add_run('CTC' + CtcNoDigit).bold = True
-        # Select row by key in LST
-        site = LST.loc[LST['CTC No.'] == Study]
-        if len(site) > 0:
-            if isinstance(site.iloc[0, 30], str):
-                # Para0 = FormDoc.tables[0].rows[3].cells[1].paragraphs[0]
-                # Para0.add_run('Rept Locn').font.size = Pt(9)
-                if len(FormDoc.tables[0].rows[3].cells[1].paragraphs) > 1:
-                    Para1 = FormDoc.tables[0].rows[3].cells[1].paragraphs[1]
-                    Para1Run = Para1.add_run(site.iloc[0, 30])
-                    Para1Run.bold = True
-                    Para1Run.font.size = Pt(12)
-                else:
-                    Para1 = FormDoc.tables[0].rows[3].cells[1].add_paragraph()
-                    Para1Run = Para1.add_run(site.iloc[0, 30])
-                    Para1Run.bold = True
-                    Para1Run.font.size = Pt(12)
-            if isinstance(site.iloc[0, 1], str):
-                FormDoc.tables[1].rows[0].cells[0].text = ''
-                Prot1Run = FormDoc.tables[1].rows[0].cells[0].paragraphs[0].add_run('Protocol: ' + site.iloc[0, 1])
-                Prot1Run.font.size = Pt(10)
-                Prot1Run.bold = True
-                FormDoc.tables[1].rows[0].cells[0].paragraphs[0].paragraph_format.space_before = Pt(6)
-            if isinstance(site.iloc[0, 28], str):
-                FormDoc.tables[1].rows[3].cells[0].text = 'Contact Person: ' + site.iloc[0, 28]
-                FormDoc.tables[1].rows[3].cells[0].paragraphs[0].runs[0].font.size = Pt(10)
-            if isinstance(site.iloc[0, 29], str):
-                FormDoc.tables[1].rows[3].cells[1].text = 'Contact Number: ' + site.iloc[0, 29]
-                FormDoc.tables[1].rows[3].cells[1].paragraphs[0].runs[0].font.size = Pt(10)
-        # Loop through tests
-        # Test remarks
-        test_remarks = []
-        for TG in haema_test_group:
-            # Content
-            row1 = FormDoc.tables[2].add_row()
-            row1.cells[0].text = u'\u25a1'
-            # Apply style
-            for paragraph in row1.cells[0].paragraphs:
-                for run in paragraph.runs:
-                    run.font.name = 'PMingLiU'
-            # Loop through test with index
-            Content = ''
-            CollectionTubes = []
-            OptionalTest = []
-            # Check at least one test is not optional
-            HasNonOptional = False
-            for test in TG['Tests']:
-                if not test['is_optional']:
-                    HasNonOptional = True
-            # Loop through test with index
-            RowFilled = False
-            for index, test in enumerate(TG['Tests']):
-                if HasNonOptional and test['is_optional'] is True:
-                    OptionalTest.append(test)
-                    continue
-                if RowFilled:
-                    Content += '\n'
-                Content += test['test']
-                # Add specimen to collection tubes if not exists
-                if isinstance(test['specimen'], str) and test['specimen'] != '':
-                    if test['specimen'] not in CollectionTubes:
-                        CollectionTubes.append(test['specimen'])
-                RowFilled = True
-                # Add test remarks if any
-                if isinstance(test['remarks'], str) and len(test['remarks']) > 0:
-                    test_remarks.append(test['remarks'])
-            row1.cells[1].text = Content
-            # Add collection tubes paragraph
-            if len(CollectionTubes) > 0:
-                # Loop through collection tubes
-                for i, tube in enumerate(CollectionTubes):
-                    if isinstance(tube, str) and tube != '':
-                        para = row1.cells[1].add_paragraph()
-                        para.add_run('[')
-                        run1 = para.add_run(tube)
-                        tube_color = blood_tube.get_blood_tube_colour(tube)
-                        if tube_color is not None:
-                            run1.font.color.rgb = RGBColor(tube_color[0], tube_color[1], tube_color[2])
-                        para.add_run(']')
-            # Merge cell 1 with 2
-            row1.cells[1].merge(row1.cells[2])
-            # Move row
-            rowA = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 1]
-            rowB = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 2]
-            rowA._tr.addnext(rowB._tr)
-            # Add optional test
-            if len(OptionalTest) > 0:
-                for i2, t2 in enumerate(OptionalTest):
-                    row2 = FormDoc.tables[2].add_row()
-                    row2.cells[1].text = u'\u25a1'
-                    # Apply style
-                    for paragraph in row2.cells[1].paragraphs:
-                        for run in paragraph.runs:
-                            run.font.name = 'PMingLiU'
-                    row2.cells[2].text = t2['test']
-                    # Move row
-                    rowA = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 1]
-                    rowB = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 2]
-                    rowA._tr.addnext(rowB._tr)
-                # Merge row
-                Cell1 = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 2].cells[0]
-                Cell2 = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 3].cells[0]
-                Cell1.merge(Cell2)
-        # Remove placeholder row 2
-        Table = FormDoc.tables[2]._tbl
-        RemoveRow = FormDoc.tables[2].rows[2]._tr
-        Table.remove(RemoveRow)
-        # Add test remarks to the last row of the table
-        if len(test_remarks) > 0:
-            row = FormDoc.tables[2].rows[len(FormDoc.tables[2].rows) - 1]
-            for R in test_remarks:
-                para_remark = row.cells[1].add_paragraph()
-                para_run = para_remark.add_run(R)
-                para_run.font.italic = True
-                para_run.font.bold = True
-                para_run.font.color.rgb = RGBColor(0x00, 0x80, 0x00)
-                para_run.font.size = Pt(10)
-        try:
-            # Create a file name
-            site = LST.loc[LST['CTC No.'] == Study]
-            RRExportFileName = ''
-            if (len(site) > 0):
-                RRExportFileName = '[AutoGen] ' + site.iloc[0,0] + '_' + site.iloc[0,2] + '_' + site.iloc[0,1] + '_HemaForm.docx'
-            else:
-                RRExportFileName = '[AutoGen] ' + Study + '_HemaForm.docx'
-            if not UseExportPath:
-                FormDoc.save(RRExportFileName)
-                print("Haematology Test Form Rendered: " + RRExportFileName)
-            else:
-                # find study folder in export path
-                StudyFolder = ''
-                for ExportPath in ExportPaths:
-                    for dirs in os.listdir(ExportPath):
-                        if dirs.startswith(CtcNoDigit + '_'):
-                            StudyFolder = os.path.join(ExportPath, dirs)
-                            # Check sub folder
-                            for dirs2 in os.listdir(StudyFolder):
-                                if dirs2.startswith('03 '):
-                                    StudyFolder = os.path.join(StudyFolder, dirs2)
-                                    break
-                            break
-                        if StudyFolder != '':
-                            break
-                    if StudyFolder != '':
-                        break
-                if StudyFolder == '':
-                    print('Error: Study folder not found')
-                    print('Export to default path')
-                    FormDoc.save(RRExportFileName)
-                    return
-                else:
-                    FormDoc.save(os.path.join(StudyFolder, RRExportFileName))
-                    print("Haematology Test Form Rendered: " + StudyFolder + "\\" + RRExportFileName)
-        except:
-            print('Error: File is open')
+        if not HaemaLab.render_haematology_test_form(Study, HaemaLab.render_haematology_test_group(CurrentHaematologyTest)):
+            print("Haematology Test Form Render Failed!")
+    # Microbiology section
     if len(CurrentMicrobiologyTest) == 0:
         print('No Microbiology Test')
     else:
@@ -600,8 +439,12 @@ def render_form_for_study(Study):
         site = LST.loc[LST['CTC No.'] == Study]
         RRExportFileName = ''
         if (len(site) > 0):
-            RRExportFileName = '[AutoGen] ' + site.iloc[0, 0] + '_' + site.iloc[0, 2] + '_' + site.iloc[
-                0, 1] + '_MicroReferenceRanges.docx'
+            if not isinstance(site.iloc[0, 1], str):
+                # Convert to string
+                protocol = str(site.iloc[0, 1])
+            else:
+                protocol = site.iloc[0, 1]
+            RRExportFileName = '[AutoGen] ' + site.iloc[0, 0] + '_' + site.iloc[0, 2] + '_' + protocol + '_MicroReferenceRanges.docx'
         else:
             RRExportFileName = '[AutoGen] ' + Study + '_MicroReferenceRanges.docx'
         if not UseExportPath:
@@ -629,20 +472,22 @@ def render_form_for_study(Study):
                 print('Export to default path')
                 if MicroLab.render_reference_range_request(Study, CurrentMicrobiologyTest, os.path.join(StudyFolder, RRExportFileName)):
                     print('Microbiology Reference Range File Created: ' + RRExportFileName)
-                return
             else:
                 if MicroLab.render_reference_range_request(Study, CurrentMicrobiologyTest, os.path.join(StudyFolder, RRExportFileName)):
                     print('Microbiology Reference Range File Created: ' + os.path.join(StudyFolder, RRExportFileName))
         print("Rendering Microbiology Test Form...")
         micbio_test_group = MicroLab.render_test_group(CurrentMicrobiologyTest)
         MicroLab.render_test_form(Study, micbio_test_group)
+    # Chemistry section
     if len(CurrentChemistryTest) == 0:
         print('No Chemistry Test')
     else:
-        print(CurrentChemistryTest)
-    print('OK')
+        print('Chemistry Test Found!')
+        if not ChemLab.render_chemistry_test_form(Study, ChemLab.render_test_group(CurrentChemistryTest)):
+            print('Error: Chemistry Test Form Render Failed')
+    print('Finished')
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    render_form_for_study("2262HKU1")
+    render_form_for_study("2355HKU1")

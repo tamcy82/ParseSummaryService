@@ -85,15 +85,23 @@ class MicrobiologyLab:
         matched_tests = []
         # Exact match microbiology tests
         for index, T in self.MicrobiologyTestsDB.iterrows():
+            this_name = T['test'].lower()
+            # Matching sequence is important!
             # Check item
-            if T['test'].lower() in item.lower():
+            if item.strip().lower() == this_name or this_name in description:
+                # Does not work with tests that have space in their name (description) as description is tokenized
+                # Will handle this case later
+                # Add to matched tests if not exists
                 matched_tests.append(T['test'])
                 continue
-            # Check description
-            # if T has space
-            if " " in T['test']:
+            # Match alternative names
+            for alt_name in T['alt_name']:
+                if alt_name.lower() in item.lower() or alt_name.lower() in description:
+                    matched_tests.append(T['test'])
+            # For test names have space
+            if " " in this_name:
                 # Split T into words
-                words = T['test'].split(" ")
+                words = this_name.split(" ")
                 # Compare T with description sequentially
                 for i in range(len(words)):
                     # If T is not in description, break
@@ -102,13 +110,15 @@ class MicrobiologyLab:
                     # If T is in description, and it is the last word of T
                     if words[i].lower() in description and i == len(words) - 1:
                         matched_tests.append(T['test'])
-            else:
-                if T['test'].lower() in description:
-                    matched_tests.append(T['test'])
-            # Match alternative names
-            for alt_name in T['alt_name']:
-                if alt_name.lower() in item.lower() or alt_name.lower() in description:
-                    matched_tests.append(T['test'])
+
+            # Match test name that is not start with the name
+            if this_name in item.lower():
+                # Check if test is not already in all_tests
+                if test not in all_tests:
+                    # Test not found in all_tests
+                    # Add test to matched_tests
+                    matched_tests.append(test['test'])
+                    continue
         return matched_tests
 
     # Match case-insensitive HCV serology tests from a given list of string
@@ -269,9 +279,11 @@ class MicrobiologyLab:
         UseExportPath = True
         # Check form template path
         if self.test_form_template_path == "":
+            print("No test form template path specified. Please specify a path to the test form template.")
             return False
         # Check file exists
         if not os.path.exists(self.test_form_template_path):
+            print("Test form template path does not exist. Please specify a valid path to the test form template.")
             return False
         MicbioForm = self.open_micro_form_template(self.test_form_template_path)
         # Find site from lst
@@ -318,7 +330,7 @@ class MicrobiologyLab:
                 MicbioForm.tables[1].rows[3].cells[0].text = 'Contact Person: ' + site_info.iloc[0, 28]
                 MicbioForm.tables[1].rows[3].cells[0].paragraphs[0].runs[0].font.size = Pt(10)
             if isinstance(site_info.iloc[0, 29], str):
-                MicbioForm.tables[1].rows[3].cells[1].text = 'Contact Number: ' + site.iloc[0, 29]
+                MicbioForm.tables[1].rows[3].cells[1].text = 'Contact Number: ' + site_info.iloc[0, 29]
                 MicbioForm.tables[1].rows[3].cells[1].paragraphs[0].runs[0].font.size = Pt(10)
         # Content
         # Get content row
@@ -370,7 +382,12 @@ class MicrobiologyLab:
         try:
             RRExportFileName = ''
             if (len(site_info) > 0):
-                RRExportFileName = '[AutoGen] ' + site_info.iloc[0,0] + '_' + site_info.iloc[0,2] + '_' + site_info.iloc[0,1] + '_MicrobioForm.docx'
+                if not isinstance(site_info.iloc[0, 1], str):
+                    # Convert to string
+                    protocol = str(site_info.iloc[0, 1])
+                else:
+                    protocol = site_info.iloc[0, 1]
+                RRExportFileName = '[AutoGen] ' + site_info.iloc[0,0] + '_' + site_info.iloc[0,2] + '_' + protocol + '_MicrobioForm.docx'
             else:
                 RRExportFileName = '[AutoGen] ' + site + '_MicrobioForm.docx'
             if not UseExportPath:

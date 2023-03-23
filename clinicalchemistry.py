@@ -1,11 +1,15 @@
 # Clinical Chemistry Module
+import os
 
 # Path: clinicalchemistry.py
 import pandas as pd
 from docx import Document
+from docx.shared import Pt, RGBColor
 from nltk.tokenize import word_tokenize
 from fuzzywuzzy import fuzz
 import re
+
+import blood_tube
 
 
 # Define Clinical Chemistry Class
@@ -30,7 +34,7 @@ class ClinicalChemistryLab:
         # Expand alt_name column
         self.ClinicalChemistryTestsDB['alt_name'] = self.ClinicalChemistryTestsDB['alt_name'].str.split(',')
         # Define form template path
-        self.ClinicalChemistryFormTemplatePath = '.\\templates\\ClinicalChemistryFormTemplate.docx'
+        self.test_form_template_path = '.\\FormTemplateChemLab.docx'
 
     # Load ClinicalChemistryTestsDB into pandas
     def load_chemistry_tests_db(self, path):
@@ -39,7 +43,7 @@ class ClinicalChemistryLab:
 
     # Load ECPathCode into pandas
     def load_ec_path_code(self, file_path):
-        df = pd.read_excel(file_path, header=0, dtype=str).fillna("")
+        df = pd.read_excel(file_path, header=0, dtype=str, na_filter=False).fillna("")
         # Parse file
         # Create a new dataframe
         df_new = pd.DataFrame(columns=['lab', 'test', 'alt_name', 'specimen', 'code', 'section_order', 'is_optional',
@@ -51,8 +55,7 @@ class ClinicalChemistryLab:
             # Get test
             test = row['Test']
             # Get alt_name
-            # alt_name = row['Alt Name']
-            alt_name = []
+            alt_name = row['Alternative name']
             # Get specimen
             specimen = row['Specimen']
             # Get code
@@ -117,6 +120,31 @@ class ClinicalChemistryLab:
             return proceeding_word, postceeding_word
         return None
 
+    # Render exclusion keyword list fo a test
+    def get_exclusion_list_of_test(self, test):
+        # Default to exclude urine and urinary name
+        exclusion_list = ['urine', 'urinary']
+        if ' ' in test:
+            return exclusion_list
+        elif test.startswith('['):
+            return exclusion_list
+        else:
+            # Find tests in the database that contains the test name
+            tests = self.ClinicalChemistryTestsDB.loc[self.ClinicalChemistryTestsDB['test'].str.contains(test)]
+            target_tests = []
+            # Iterate through each test
+            for index, row in tests.iterrows():
+                if ' ' not in row['test']:
+                    target_tests.append(row['test'])
+                else:
+                    # Split the test name
+                    test_names = row['test'].split(' ')
+                    # Iterate through each test name
+                    for test_word in test_names:
+                        if test_word != test:
+                            exclusion_list.append(test_word.lower())
+        return exclusion_list
+
     # match pregnancy tests
     # To detect incoming item and description that may contain both urine and serum tests
     def match_pregnancy_tests(self, item, description, all_tests):
@@ -178,30 +206,30 @@ class ClinicalChemistryLab:
                     # Check if total bilirubin is requested
                     if not is_total_bilirubin and (postceeding_word == "total" or postceeding_word == "total"):
                         # Total bilirubin found
+                        is_total_bilirubin = True
                         # Check if total bilirubin is not already in all_tests
                         if "Total Bilirubin" not in all_tests:
                             # Total bilirubin not found in all_tests
                             # Add total bilirubin to matched_tests
                             matched_tests.append("Total Bilirubin")
-                            is_total_bilirubin = True
                     # Check if in-direct bilirubin is requested
-                    if not is_indirect_bilirubin and (proceeding_word == "in-direct" or postceeding_word == "in-direct"):
+                    elif not is_indirect_bilirubin and (proceeding_word == "in-direct" or postceeding_word == "in-direct"):
                         # Indirect bilirubin found
+                        is_indirect_bilirubin = True
                         # Check if indirect bilirubin is not already in all_tests
                         if "In-direct Bilirubin" not in all_tests:
                             # Indirect bilirubin not found in all_tests
                             # Add indirect bilirubin to matched_tests
                             matched_tests.append("In-direct Bilirubin")
-                            is_indirect_bilirubin = True
                     # Check if direct bilirubin is requested
-                    if not is_direct_bilirubin and (proceeding_word == "direct" or postceeding_word == "direct"):
+                    elif not is_direct_bilirubin and (proceeding_word == "direct" or postceeding_word == "direct"):
                         # Direct bilirubin found
+                        is_direct_bilirubin = True
                         # Check if direct bilirubin is not already in all_tests
                         if "Direct Bilirubin" not in all_tests:
                             # Direct bilirubin not found in all_tests
                             # Add direct bilirubin to matched_tests
                             matched_tests.append("Direct Bilirubin")
-                            is_direct_bilirubin = True
         if "bilirubin" in description:
             # Bilirubin tests found
             # Loop through test names with index
@@ -212,32 +240,33 @@ class ClinicalChemistryLab:
                     # Check if total bilirubin is requested
                     if not is_total_bilirubin and (postceeding_word == "total" or postceeding_word == "total"):
                         # Total bilirubin found
+                        is_total_bilirubin = True
                         # Check if total bilirubin is not already in all_tests
                         if "Total Bilirubin" not in all_tests:
                             # Total bilirubin not found in all_tests
                             # Add total bilirubin to matched_tests
                             matched_tests.append("Total Bilirubin")
-                            is_total_bilirubin = True
                     # Check if in-direct bilirubin is requested
-                    if not is_indirect_bilirubin and (proceeding_word == "in-direct" or postceeding_word == "in-direct"):
+                    elif not is_indirect_bilirubin and (proceeding_word == "in-direct" or postceeding_word == "in-direct"):
                         # Indirect bilirubin found
+                        is_indirect_bilirubin = True
                         # Check if indirect bilirubin is not already in all_tests
                         if "In-direct Bilirubin" not in all_tests:
                             # Indirect bilirubin not found in all_tests
                             # Add indirect bilirubin to matched_tests
                             matched_tests.append("In-direct Bilirubin")
-                            is_indirect_bilirubin = True
                     # Check if direct bilirubin is requested
-                    if not is_direct_bilirubin and (proceeding_word == "direct" or postceeding_word == "direct"):
+                    elif not is_direct_bilirubin and (proceeding_word == "direct" or postceeding_word == "direct"):
                         # Direct bilirubin found
+                        is_direct_bilirubin = True
                         # Check if direct bilirubin is not already in all_tests
                         if "Direct Bilirubin" not in all_tests:
                             # Direct bilirubin not found in all_tests
                             # Add direct bilirubin to matched_tests
                             matched_tests.append("Direct Bilirubin")
-                            is_direct_bilirubin = True
         # If nothing is found
-        if len(matched_tests) == 0 and ("bilirubin" in item or "bilirubin" in description):
+        if ("bilirubin" in item or "bilirubin" in description) and\
+                not is_direct_bilirubin and not is_indirect_bilirubin and not is_total_bilirubin:
             # Add total bilirubin to matched_tests
             matched_tests.append("Bilirubin (UNKNOWN TYPE)")
         return matched_tests
@@ -281,30 +310,32 @@ class ClinicalChemistryLab:
                         # Check if fasting glucose is requested
                         if not fasting_glucose_flag and (proceeding_word == "fasting" or postceeding_word == "fasting"):
                             # Fasting glucose found
+                            fasting_glucose_flag = True
                             # Check if fasting glucose is not already in all_tests
                             if "Glucose (Fasting)" not in all_tests:
                                 # Fasting glucose not found in all_tests
                                 # Add fasting glucose to matched_tests
                                 matched_tests.append("Glucose (Fasting)")
-                                fasting_glucose_flag = True
                         # Check if random glucose is requested
-                        if not random_glucose_flag and (proceeding_word == "random" or postceeding_word == "random"):
+                        if not random_glucose_flag and\
+                                (proceeding_word == "random" or postceeding_word == "random" or
+                                 proceeding_word == "non-fasted" or postceeding_word == "non-fasted"):
                             # Random glucose found
+                            random_glucose_flag = True
                             # Check if random glucose is not already in all_tests
                             if "Glucose (Random)" not in all_tests:
                                 # Random glucose not found in all_tests
                                 # Add random glucose to matched_tests
                                 matched_tests.append("Glucose (Random)")
-                                random_glucose_flag = True
                         # Check if csf glucose is requested
                         if not csf_glucose_flag and (proceeding_word == "csf" or postceeding_word == "csf"):
                             # CSF glucose found
+                            csf_glucose_flag = True
                             # Check if csf glucose is not already in all_tests
                             if "CSF Glucose" not in all_tests:
                                 # CSF glucose not found in all_tests
                                 # Add csf glucose to matched_tests
                                 matched_tests.append("CSF Glucose")
-                                csf_glucose_flag = True
         # Match name in description
         if "glucose" in description:
             # Glucose tests found
@@ -317,35 +348,35 @@ class ClinicalChemistryLab:
                         # Check if fasting glucose is requested
                         if not fasting_glucose_flag and (proceeding_word == "fasting" or postceeding_word == "fasting"):
                             # Fasting glucose found
+                            fasting_glucose_flag = True
                             # Check if fasting glucose is not already in all_tests
                             if "Glucose (Fasting)" not in all_tests:
                                 # Fasting glucose not found in all_tests
                                 # Add fasting glucose to matched_tests
                                 matched_tests.append("Glucose (Fasting)")
-                                fasting_glucose_flag = True
                         # Check if random glucose is requested
                         if not random_glucose_flag and (proceeding_word == "random" or postceeding_word == "random"):
                             # Random glucose found
+                            random_glucose_flag = True
                             # Check if random glucose is not already in all_tests
                             if "Glucose (Random)" not in all_tests:
                                 # Random glucose not found in all_tests
                                 # Add random glucose to matched_tests
                                 matched_tests.append("Glucose (Random)")
-                                random_glucose_flag = True
                         # Check if csf glucose is requested
                         if not csf_glucose_flag and (proceeding_word == "csf" or postceeding_word == "csf"):
                             # CSF glucose found
+                            csf_glucose_flag = True
                             # Check if csf glucose is not already in all_tests
                             if "CSF Glucose" not in all_tests:
                                 # CSF glucose not found in all_tests
                                 # Add csf glucose to matched_tests
                                 matched_tests.append("CSF Glucose")
-                                csf_glucose_flag = True
         # If nothing is found
-        if len(matched_tests) == 0\
-                and ("glucose" in item or "glucose" in description):
+        if ("glucose" in item or "glucose" in description) and\
+                not fasting_glucose_flag and not random_glucose_flag and not csf_glucose_flag:
             # Add glucose unknown type to matched_tests
-            matched_tests.append("Glucose (UNKNOWN TYPE)")
+            matched_tests.append("Glucose (Fasting or Random?)")
         return matched_tests
 
     # Match different types of calcium tests
@@ -378,12 +409,12 @@ class ClinicalChemistryLab:
                         # Check if ionized calcium is requested
                         if not ionized_calcium_flag and (proceeding_word == "ionized" or postceeding_word == "ionized"):
                             # Ionized calcium found
+                            ionized_calcium_flag = True
                             # Check if ionized calcium is not already in all_tests
                             if "Ionized Calcium" not in all_tests:
                                 # Ionized calcium not found in all_tests
                                 # Add ionized calcium to matched_tests
                                 matched_tests.append("Calcium (Ionized)")
-                                ionized_calcium_flag = True
                         else:
                             # Ionized calcium not found
                             # Check if calcium is not already in all_tests
@@ -403,12 +434,12 @@ class ClinicalChemistryLab:
                         # Check if ionized calcium is requested
                         if not ionized_calcium_flag and (proceeding_word == "ionized" or postceeding_word == "ionized"):
                             # Ionized calcium found
+                            ionized_calcium_flag = True
                             # Check if ionized calcium is not already in all_tests
                             if "Ionized Calcium" not in all_tests:
                                 # Ionized calcium not found in all_tests
                                 # Add ionized calcium to matched_tests
                                 matched_tests.append("Calcium (Ionized)")
-                                ionized_calcium_flag = True
                         else:
                             # Ionized calcium not found
                             # Check if calcium is not already in all_tests
@@ -423,64 +454,212 @@ class ClinicalChemistryLab:
             matched_tests.append("Calcium (UNKNOWN TYPE)")
         return matched_tests
 
+    # Match urine chemistry tests
+    # Return matched_tests
+    def match_urine_chemisry(self, item, description, all_tests):
+        # Define matched_tests container
+        matched_tests = []
+        # Define test
+        urine_tests = {
+            "Urinary Protein" : ["urine protein", "urinary protein"],
+            "Urinary Creatinine" : ["urine creatinine", "urinary creatinine"],
+            "Urine Toxicology Screening" : ["urine toxicology screening", "urine toxicology"],
+        }
+        scan_range = 3
+        # Match item
+        for test_name, test_keywords in urine_tests.items():
+            for test_keyword in test_keywords:
+                if test_keyword in item:
+                    # Test found in item
+                    # Check if test is not already in all_tests
+                    if test_name not in all_tests:
+                        actual_name = test_name
+                        # Scan description for keywords: 24, spot
+                        for scan_index in range(1, scan_range + 1):
+                            if "24" in description[scan_index]:
+                                actual_name = "24 Hour " + actual_name
+                                break
+                            elif "spot" in description[scan_index]:
+                                actual_name = "Spot " + actual_name
+                                break
+                        # Test not found in all_tests
+                        # Add test to matched_tests
+                        matched_tests.append(test_name)
+        # Match description
+        for test_name, test_keywords in urine_tests.items():
+            for test_keyword in test_keywords:
+                if " " in test_keyword:
+                    # Split test keyword
+                    test_keyword_tokens = test_keyword.split(" ")
+                    # Loop through tokens
+                    for token_index, token in enumerate(test_keyword_tokens):
+                        # Compare token with description sequentially
+                        if token in description:
+                            # Check if token is not the last token
+                            if token_index < len(test_keyword_tokens) - 1:
+                                # Check if next token is in description
+                                if test_keyword_tokens[token_index + 1] in description:
+                                    # Check if test is not already in all_tests
+                                    actual_name = test_name
+                                    # Scan description for keywords: 24, spot
+                                    for scan_index in range(token_index - scan_range, token_index + scan_range + 1):
+                                        if scan_index >= 0 and scan_index < len(description):
+                                            if description[scan_index] == "24":
+                                                actual_name = actual_name + " (24-h Urine)"
+                                                break
+                                            elif description[scan_index] == "spot":
+                                                actual_name = actual_name + " (Spot Urine)"
+                                                break
+                                    if actual_name not in all_tests:
+                                        # Test not found in all_tests
+                                        # Add test to matched_tests
+                                        matched_tests.append(actual_name)
+        return matched_tests
+
     # Match tests from DB
     # To detect incoming item and description that may contain tests from DB
     # Return matched_tests
     def match_tests_from_db(self, item, description, all_tests):
         # Define matched_tests container
         matched_tests = []
-        # Tokenize item
-        item_tokens = word_tokenize(item)
-        # Remove punctuation
-        item_tokens = [token for token in item_tokens if token.isalnum()]
-        # To lower
-        item_tokens = [token.lower() for token in item_tokens]
-        # Define flags
+        # Exclusion keywords
+        # Skip tests that contain these keywords
+        scan_range = 1
         # Loop through tests in ClinicalChemistryTestsDB
         for index, test in self.ClinicalChemistryTestsDB.iterrows():
+            exclusion_keywords = self.get_exclusion_list_of_test(test['test'])
             # Skip special groups
             if test['test'].startswith("["):
                 continue
             # This matching sequence is important
             # Match test name
             this_name = test['test'].lower()
-            if item.startswith(this_name) or this_name in description:
-                # Check if test is not already in all_tests
-                if test not in all_tests:
-                    # Test not found in all_tests
-                    # Add test to matched_tests
-                    matched_tests.append(test['test'])
+            # Check item
+            if item.lower().startswith(this_name):
+                # Does not work with tests that have space in their name as description is tokenized
+                # Will handle this case later
+                # Add to matched tests if not exists
+                Excluded = False
+                if ' ' in item:
+                    # Split item
+                    item_tokens = item.split(' ')
+                    # Check the exclusion keywords with range
+                    for scan_index in range(1, scan_range + 1):
+                        if scan_index < len(item_tokens):
+                            if item_tokens[scan_index].lower() in exclusion_keywords:
+                                Excluded = True
+                                continue
+                if not Excluded:
+                    if test['test'] not in all_tests:
+                        # Test not found in all_tests
+                        # Add test to matched_tests
+                        matched_tests.append(test['test'])
+                    continue
+            # Check description
+            if this_name in description:
+                # Does not work with tests that have space in their name as description is tokenized
+                # Will handle this case later
+                # Add to matched tests if not exists
+                Excluded = False
+                # Get index of this_name in description
+                index = description.index(this_name)
+                # Check exclusion keywords with scan range
+                for scan_index in range(index - scan_range, index + scan_range + 1):
+                    if scan_index >= 0 and scan_index < len(description):
+                        if description[scan_index].lower() in exclusion_keywords:
+                            Excluded = True
+                            continue
+                if not Excluded:
+                    if test['test'] not in all_tests:
+                        # Test not found in all_tests
+                        # Add test to matched_tests
+                        matched_tests.append(test['test'])
                     continue
             # Match alternative names
             if len(test['alt_name']) > 0:
                 for alt_name in test['alt_name']:
+                    if alt_name == "":
+                        continue
                     if alt_name.lower() in item.lower() or alt_name.lower() in description:
                         matched_tests.append(test['test'])
+
                         continue
-            # if test['test'] has space
-            if " " in test['test']:
-                # Split T into words
-                words = test['test'].split(" ")
-                # Compare T with description sequentially
-                for i in range(len(words)):
-                    # If T is not in description, break
-                    if words[i].lower() not in description:
-                        break
-                    # If T is in description, and it is the last word of T
-                    if words[i].lower() in description and i == len(words) - 1:
-                        matched_tests.append(test['test'])
-            if this_name in item.lower():
+            # For test names have space
+            if " " in this_name:
+                # Split test into words
+                words = this_name.split(" ")
+                # Compare test with description sequentially and exclude tests that contain exclusion keywords
+                for word_index, word in enumerate(words):
+                    if word in description:
+                        # Check if word is not the last word
+                        if word_index < len(words) - 1:
+                            # Check if next word is in description
+                            if words[word_index + 1] in description:
+                                # Check exclusion keywords with scan range
+                                Excluded = False
+                                for scan_index in range(word_index - scan_range, word_index + scan_range + 1):
+                                    if scan_index >= 0 and scan_index < len(description):
+                                        if description[scan_index] in exclusion_keywords:
+                                            Excluded = True
+                                            continue
+                                # Check if test is not already in all_tests
+                                if not Excluded:
+                                    if test['test'] not in all_tests:
+                                        # Test not found in all_tests
+                                        # Add test to matched_tests
+                                        matched_tests.append(test['test'])
+                                    continue
+            # Match test name that is not start with the name
+            if this_name in item.lower() and not item.lower().startswith(this_name):
                 # Check if test is not already in all_tests
-                if test not in all_tests:
+                if test['test'] not in all_tests:
                     # Test not found in all_tests
                     # Add test to matched_tests
                     matched_tests.append(test['test'])
-                    continue
+                continue
         return matched_tests
 
-    # Render microbiology lab test groups
+    # To modifier the test list
+    def chem_test_modifier(self, t):
+        # Define special tests
+        special_tests = {
+            "[TSH, Free T4]": [["TSH"], ["Free T4", "FT4"]],
+            "[Cholesterol, Triglycerides, HDL-C, LDL-C]" : [
+                ["Cholesterol"], ["Triglycerides"], ["HDL-C"], ["LDL-C"]
+            ],
+            "[Sodium, Potassium, Chloride, Urea, Creatinine]": [
+                ["Sodium"], ["Potassium"], ["Chloride"], ["Urea"], ["Creatinine"]
+            ],
+            "[Total Protein, Albumin, Total Bilirubin, ALP, AST, ALT]" : [
+                ["Total Protein"], ["Albumin"], ["Total Bilirubin"], ["Alkaline Phosphatase", "ALP"], ["AST"], ["ALT"]
+            ],
+        }
+        # Find all special tests from each dictionary values
+        for new_name, special_test in special_tests.items():
+            # Check if special test is in t
+            all_matched = False
+            sub_matched = 0
+            for sub_test in special_test:
+                for test in sub_test:
+                    if test in t:
+                        sub_matched += 1
+                        break
+            if sub_matched == len(special_test):
+                all_matched = True
+            if all_matched:
+                # Remove all tests in special_test from t
+                for sub_test in special_test:
+                    for test in sub_test:
+                        if test in t:
+                            t.remove(test)
+                # Add new_name to t at the beginning
+                t.insert(0, new_name)
+        return t
+
+    # Render chemistry lab test groups
     def render_test_group(self, T):
-        TestGroup = []
+        test_group = []
+        T = self.chem_test_modifier(T)
         for test in T:
             # Use multiple method to find test in HaematologyTestsDB
             # Exact match
@@ -515,16 +694,194 @@ class ClinicalChemistryLab:
                         break
             # if found
             if len(search_test) > 0:
-                thisGroup = search_test.iloc[0, 3]
+                this_group = search_test.iloc[0, 5]
+                matched_test = False
                 # if thisGroup is not empty
-                if thisGroup == "General Chemistry":
-                    TestGroup.append({'TestGroup': "General Chemistry", 'Tests': [search_test.iloc[0]]})
-                elif thisGroup == "Lipid":
-                    TestGroup.append({'TestGroup': "Lipid", 'Tests': [search_test.iloc[0]]})
+                if this_group == "General Chemistry":
+                    for index, row in enumerate(test_group):
+                        if row["test_group"] == "General Chemistry":
+                            matched_test = True
+                            row['Tests'].append(search_test.iloc[0])
+                            break
+                    if not matched_test:
+                        test_group.append({'test_group': "General Chemistry", 'Tests': [search_test.iloc[0]]})
+                elif this_group == "Lipid":
+                    for index, row in enumerate(test_group):
+                        if row["test_group"] == "Lipid":
+                            matched_test = True
+                            row['Tests'].append(search_test.iloc[0])
+                            break
+                    if not matched_test:
+                        test_group.append({'test_group': "General Chemistry", 'Tests': [search_test.iloc[0]]})
+                elif this_group == "Hormone-THT":
+                    for index, row in enumerate(test_group):
+                        if row["test_group"] == "Hormone-THT":
+                            matched_test = True
+                            row['Tests'].append(search_test.iloc[0])
+                            break
+                    if not matched_test:
+                        test_group.append({'test_group': "Hormone-THT", 'Tests': [search_test.iloc[0]]})
                 else:
-                    TestGroup.append({'TestGroup': None, 'Tests': [search_test.iloc[0]]})
+                    test_group.append({'test_group': None, 'Tests': [search_test.iloc[0]]})
             else:
-                TestGroup.append({'TestGroup': None, 'Tests': [
+                test_group.append({'test_group': None, 'Tests': [
                     {'lab': 'chem', 'test': test, 'alt_name': "", 'specimen': "", 'code': "", 'section_order': None,
                      'is_optional': False, 'remarks': ''}]})
-        return TestGroup
+        return test_group
+
+    # Render chemistry test form
+    def render_chemistry_test_form(self, site, test_groups):
+        UseExportPath = True
+        # Check form template path
+        if self.test_form_template_path == "":
+            print("Chemistry form template path is empty")
+            return False
+        # Check file exists
+        if not os.path.exists(self.test_form_template_path):
+            print("Chemistry form template path is not valid")
+            return False
+        ChemForm = self.open_chem_form_template(self.test_form_template_path)
+        # Find site from lst
+        site_info = self.lst.loc[self.lst['CTC No.'] == site]
+        # Extract digits of site
+        CtcNoDigit = ''
+        # Extract first digits
+        for c in site:
+            if c.isdigit():
+                CtcNoDigit += c
+            else:
+                break
+        # Fill study info
+        if len(ChemForm.tables[0].rows[2].cells[1].paragraphs) > 1:
+            SiteCell2 = ChemForm.tables[0].rows[2].cells[1].paragraphs[1]
+        else:
+            SiteCell2 = ChemForm.tables[0].rows[2].cells[1].add_paragraph()
+        SiteCellRun = SiteCell2.add_run('CTC' + CtcNoDigit)
+        SiteCellRun.bold = True
+        SiteCellRun.font.size = Pt(14)
+        if len(site_info) > 0:
+            if isinstance(site_info.iloc[0, 30], str):
+                # Para0 = FormDoc.tables[0].rows[3].cells[1].paragraphs[0]
+                # Para0.add_run('Rept Locn').font.size = Pt(9)
+                if len(ChemForm.tables[0].rows[3].cells[1].paragraphs) > 1:
+                    Para1 = ChemForm.tables[0].rows[3].cells[1].paragraphs[1]
+                    Para1Run = Para1.add_run(site_info.iloc[0, 30])
+                    Para1Run.bold = True
+                    Para1Run.italic = True
+                    Para1Run.font.size = Pt(14)
+                else:
+                    Para1 = ChemForm.tables[0].rows[3].cells[1].add_paragraph()
+                    Para1Run = Para1.add_run(site_info.iloc[0, 30])
+                    Para1Run.bold = True
+                    Para1Run.italic = True
+                    Para1Run.font.size = Pt(14)
+            if isinstance(site_info.iloc[0, 1], str):
+                ChemForm.tables[1].rows[0].cells[0].text = ''
+                Prot1Run = ChemForm.tables[1].rows[0].cells[0].paragraphs[0].add_run('Protocol: ' + site_info.iloc[0, 1])
+                Prot1Run.font.size = Pt(10)
+                Prot1Run.bold = True
+                ChemForm.tables[1].rows[0].cells[0].paragraphs[0].paragraph_format.space_before = Pt(6)
+            if isinstance(site_info.iloc[0, 28], str):
+                ChemForm.tables[1].rows[3].cells[0].text = 'Contact Person: ' + site_info.iloc[0, 28]
+                ChemForm.tables[1].rows[3].cells[0].paragraphs[0].runs[0].font.size = Pt(10)
+            if isinstance(site_info.iloc[0, 29], str):
+                ChemForm.tables[1].rows[3].cells[1].text = 'Contact Number: ' + site_info.iloc[0, 29]
+                ChemForm.tables[1].rows[3].cells[1].paragraphs[0].runs[0].font.size = Pt(10)
+        # Fill test info
+        test_remarks = []
+        for tg in test_groups:
+            # Content
+            row1 = ChemForm.tables[2].add_row()
+            row1.cells[0].text = u'\u25a1'
+            # Apply style
+            for paragraph in row1.cells[0].paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = 'PMingLiU'
+            # Loop through test with index
+            content_run = row1.cells[1].paragraphs[0].add_run()
+            content_run.font.size = Pt(11)
+            CollectionTubes = []
+            # Loop through test with index
+            RowFilled = False
+            for index, test in enumerate(tg['Tests']):
+                if len(content_run.text) < 20:
+                    content_run.text += test['test'] + ' (' + test['code'].upper() + ')'
+                else:
+                    content_run = row1.cells[1].add_paragraph().add_run(test['test'] + ' (' + test['code'].upper() + ')')
+                    content_run.font.size = Pt(11)
+                # Add specimen to collection tubes if not exists
+                if isinstance(test['specimen'], str) and test['specimen'] != '':
+                    if test['specimen'] not in CollectionTubes:
+                        CollectionTubes.append(test['specimen'])
+                RowFilled = True
+                # Add test remarks if any
+                if isinstance(test['remarks'], str) and len(test['remarks']) > 0:
+                    test_remarks.append(test['remarks'])
+                # Add coma if not last test
+                if index < len(tg['Tests']) - 1:
+                    content_run.text += ', '
+            # Add collection tubes paragraph
+            if len(CollectionTubes) > 0:
+                # Loop through collection tubes
+                for i, tube in enumerate(CollectionTubes):
+                    if isinstance(tube, str) and tube != '':
+                        para = row1.cells[1].add_paragraph()
+                        para.add_run('[').font.size = Pt(11)
+                        run1 = para.add_run(tube)
+                        run1.font.size = Pt(11)
+                        tube_color = blood_tube.get_blood_tube_colour(tube)
+                        if tube_color is not None:
+                            run1.font.color.rgb = RGBColor(tube_color[0], tube_color[1], tube_color[2])
+                        para.add_run(']').font.size = Pt(11)
+            # Merge cell 1 with 2
+            row1.cells[1].merge(row1.cells[2])
+            # Move row
+            rowA = ChemForm.tables[2].rows[len(ChemForm.tables[2].rows) - 1]
+            rowB = ChemForm.tables[2].rows[len(ChemForm.tables[2].rows) - 2]
+            rowA._tr.addnext(rowB._tr)
+        # Remove placeholder row 2
+        Table = ChemForm.tables[2]._tbl
+        RemoveRow = ChemForm.tables[2].rows[2]._tr
+        Table.remove(RemoveRow)
+        try:
+            # Create a file name
+            chem_form_file_name = ''
+            if len(site_info) > 0:
+                if not isinstance(site_info.iloc[0, 1], str):
+                    # Convert to string
+                    protocol = str(site_info.iloc[0, 1])
+                else:
+                    protocol = site_info.iloc[0, 1]
+                chem_form_file_name = '[AutoGen] ' + site_info.iloc[0, 0] + '_' + site_info.iloc[0, 2] + '_' + protocol + '_ChemForm.docx'
+            else:
+                chem_form_file_name = '[AutoGen] ' + site + '_ChemForm.docx'
+            if not UseExportPath:
+                ChemForm.save(chem_form_file_name)
+                print("Chemistry Test Form Rendered: " + chem_form_file_name)
+            else:
+                # find study folder in export path
+                StudyFolder = ''
+                for ExportPath in self.study_paths:
+                    for dirs in os.listdir(ExportPath):
+                        if dirs.startswith(CtcNoDigit + '_'):
+                            StudyFolder = os.path.join(ExportPath, dirs)
+                            # Check sub folder
+                            for dirs2 in os.listdir(StudyFolder):
+                                if dirs2.startswith('03 '):
+                                    StudyFolder = os.path.join(StudyFolder, dirs2)
+                                    break
+                            break
+                        if StudyFolder != '':
+                            break
+                    if StudyFolder != '':
+                        break
+                if StudyFolder == '':
+                    print('Error: Study folder not found')
+                    print('Export to default path')
+                    ChemForm.save(chem_form_file_name)
+                else:
+                    ChemForm.save(os.path.join(StudyFolder, chem_form_file_name))
+                    print("Chemistry Test Form Rendered: " + StudyFolder + "\\" + chem_form_file_name)
+        except:
+            print('Error: File is open')
+        return True
